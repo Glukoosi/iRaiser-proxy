@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Syncopate:wght@700&display=swap');
+  </style>
+  <script type="text/javascript">
+    function retrieve(url, callback) {
+      var xhttp = new XMLHttpRequest();
+      xhttp.onreadystatechange = function() {
+        if (this.readyState === 4 && this.status === 200) {
+          callback(JSON.parse(xhttp.responseText));
+        }
+      };
+      xhttp.open("GET", url, true);
+      xhttp.send();
+    }
+
+    function updateAmount() {
+      // Use the new proxy API endpoint here.
+      retrieve("https://rproxy.glukoo.si", function(response) {
+        // The API returns JSON with "total_amount". Display it with the euro sign.
+        document.getElementById("amount").innerHTML = response.total_amount + " &euro;";
+      });
+    }
+
+    function startUpdating() {
+      // Update the amount every 30 seconds.
+      window.setInterval(updateAmount, 30000);
+      updateAmount();
+    }
+
+    window.onload = startUpdating;
+  </script>
+</head>
+<body>
+  <div id="amount">0 &euro;</div>
+</body>
+</html>
