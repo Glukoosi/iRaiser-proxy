@@ -22,7 +22,7 @@
       // Use the new proxy API endpoint here.
       retrieve("https://rproxy.glukoo.si", function(response) {
         // The API returns JSON with "total_amount". Display it with the euro sign.
-        document.getElementById("amount").innerHTML = response.total_amount + " &euro;";
+        document.getElementById("amount").innerHTML = parseInt(response.total_amount, 10).toString() + " &euro;";
       });
     }
 
