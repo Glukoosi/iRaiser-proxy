@@ -12,7 +12,7 @@ import (
 
 // Target API configuration variables.
 var (
-	targetURL         = "https://frontend-api.kentaa.nl/actions/SkoDxEDZQJRV"
+	targetURL         = "https://frontend-api.kentaa.nl/actions/DfqXspu1LUph"
 	targetHeaderKey   = "x-site-id"
 	targetHeaderValue = "LqS5hWxATJhq"
 )
