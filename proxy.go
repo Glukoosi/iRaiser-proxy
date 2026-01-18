@@ -7,20 +7,22 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"regexp"
+	"strconv"
 	"sync"
 	"time"
 )
 
 // Kentaa API configuration.
 var (
-	kentaaURL         = "https://frontend-api.kentaa.nl/actions/DfqXspu1LUph"
+	kentaaURL         = "https://frontend-api.kentaa.nl/actions/DHHj8a7itW5G"
 	kentaaHeaderKey   = "x-site-id"
-	kentaaHeaderValue = "LqS5hWxATJhq"
+	kentaaHeaderValue = "o9vDUSYsMfDp"
 )
 
-// Securycast API configuration.
+// Securycast page configuration (scraping SSR page instead of delayed API).
 var (
-	securycastURL = "https://oma.kummit.fi/api/v1.0/site/266e8d22-4c76-ce4d-8b92-ff777728da95/box/ae1cd81a-018d-4110-9fc5-55875e8598bd/fi"
+	securycastURL = "https://oma.kummit.fi/keräys/nurmikkotv-2026"
 )
 
 // Cache variables for Kentaa.
@@ -47,11 +49,11 @@ type KentaaResponse struct {
 	} `json:"data"`
 }
 
-// SecurycastResponse represents the structure of the Securycast upstream JSON response.
-type SecurycastResponse struct {
-	DonationGoal   float64 `json:"donationGoal"`
-	TotalDonations float64 `json:"totalDonations"`
-}
+// Regex to parse donation amount from SSR page (matches "X € kerätty" pattern).
+// Handles thousand separators (spaces, non-breaking spaces, and &#xA0; HTML entities),
+// and the HTML entity &euro; as well as the literal € character.
+var donationRegex = regexp.MustCompile(`([\d\s\x{00A0}]+(?:&#xA0;[\d]+)*)[\s\x{00A0}]*(?:€|&euro;)[\s\x{00A0}]*kerätty`)
+var spaceStripRegex = regexp.MustCompile(`[\s\x{00A0}]+|&#xA0;`)
 
 // ProxyResult is the structure for our proxied output.
 type ProxyResult struct {
@@ -173,24 +175,33 @@ func securycastHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	// Read the upstream response.
+	// Read the upstream HTML response.
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		http.Error(w, "Error reading response", http.StatusInternalServerError)
 		return
 	}
 
-	// Parse the upstream JSON.
-	var upstream SecurycastResponse
-	if err := json.Unmarshal(body, &upstream); err != nil {
-		http.Error(w, "Error parsing upstream JSON", http.StatusInternalServerError)
+	// Parse the donation amount from the SSR HTML page.
+	matches := donationRegex.FindSubmatch(body)
+	if matches == nil || len(matches) < 2 {
+		http.Error(w, "Error parsing donation amount from page", http.StatusInternalServerError)
 		return
 	}
 
-	// Prepare our proxied response, mapping donationGoal -> target_amount, totalDonations -> total_amount.
+	// Remove spaces and non-breaking spaces from the amount string.
+	amountStr := spaceStripRegex.ReplaceAllString(string(matches[1]), "")
+
+	amount, err := strconv.Atoi(amountStr)
+	if err != nil {
+		http.Error(w, "Error converting donation amount", http.StatusInternalServerError)
+		return
+	}
+
+	// Prepare our proxied response.
 	proxyResult := ProxyResult{
-		TargetAmount: int(upstream.DonationGoal),
-		TotalAmount:  fmt.Sprintf("%.0f", upstream.TotalDonations),
+		TargetAmount: 0, // No goal shown on page
+		TotalAmount:  fmt.Sprintf("%d", amount),
 	}
 
 	finalData, err := json.Marshal(proxyResult)
