@@ -52,8 +52,9 @@ type KentaaResponse struct {
 // Regex to parse donation amount from SSR page (matches "X € kerätty" pattern).
 // Handles thousand separators (spaces, non-breaking spaces, and &#xA0; HTML entities),
 // and the HTML entity &euro; as well as the literal € character.
-var donationRegex = regexp.MustCompile(`([\d\s\x{00A0}]+(?:&#xA0;[\d]+)*)[\s\x{00A0}]*(?:€|&euro;)[\s\x{00A0}]*kerätty`)
+var donationRegex = regexp.MustCompile(`([\d\s\x{00A0},]+(?:&#xA0;[\d,]+)*)[\s\x{00A0}]*(?:€|&euro;)[\s\x{00A0}]*kerätty`)
 var spaceStripRegex = regexp.MustCompile(`[\s\x{00A0}]+|&#xA0;`)
+var decimalStripRegex = regexp.MustCompile(`,\d*$`)
 
 // ProxyResult is the structure for our proxied output.
 type ProxyResult struct {
@@ -189,8 +190,9 @@ func securycastHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Remove spaces and non-breaking spaces from the amount string.
+	// Remove spaces, non-breaking spaces, and decimal part from the amount string.
 	amountStr := spaceStripRegex.ReplaceAllString(string(matches[1]), "")
+	amountStr = decimalStripRegex.ReplaceAllString(amountStr, "")
 
 	amount, err := strconv.Atoi(amountStr)
 	if err != nil {
