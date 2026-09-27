@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>iRaiser fundraiser API</title>
+  <title>Fundraiser API</title>
   <style>
     :root {
       --bg: #f5f5f4; --card: #fff; --text: #1c1917; --muted: #57534e;
@@ -42,8 +42,10 @@
 </head>
 <body>
   <main>
-    <h1>iRaiser fundraiser API</h1>
-    <p class="lead">Get a live JSON feed of your fundraiser's total for stream overlays, widgets and scripts.</p>
+    <h1>Fundraiser API</h1>
+    <p class="lead">Get a live JSON feed of your fundraiser's total for stream overlays, widgets and scripts.
+      Works with fundraiser, team and campaign pages on iRaiser (e.g. WWF, Punainen Risti, Unicef, Syöpäsäätiö, Pelastakaa Lapset),
+      Securycast (e.g. Lastenklinikoiden Kummit, HelsinkiMissio), Nenäpäivä and MIELI ry's Mielipotti.</p>
 
     <section class="card">
       <form>
@@ -68,7 +70,7 @@
     <section class="card">
       <h2>How to use</h2>
       <ol>
-        <li>Open your fundraiser page on the charity's iRaiser site (for example <em>oma.wwf.fi</em>) and copy its address from the browser.</li>
+        <li>Open your fundraiser page (for example on <em>oma.wwf.fi</em>, <em>lahjoita.punainenristi.fi</em>, <em>oma.kummit.fi</em>, <em>nenapaiva.fi</em> or <em>mielipotti.fi</em>) and copy its address from the browser.</li>
         <li>Paste the address above and press <strong>Get URL</strong>.</li>
         <li>Use the API URL wherever you need the numbers. It returns:
           <pre>{
@@ -93,7 +95,7 @@ const { total_amount } = await res.json();</pre>
 
     const errors = {
       400: "That doesn't look like a web address. Paste the full https:// address of the fundraiser page.",
-      502: "Couldn't find an iRaiser fundraiser on that page. Check the address and that the fundraiser is public.",
+      502: "Couldn't find a supported fundraiser on that page. Check the address and that the fundraiser is public.",
     };
 
     async function show() {

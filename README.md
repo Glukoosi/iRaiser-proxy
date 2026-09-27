@@ -35,9 +35,9 @@ chmod +x proxy
 
 ## API
 
-- `GET /` serves a UI: paste a Kentaa fundraiser page and it gives you the API URL for it.
+- `GET /` serves a UI: paste a fundraiser page and it gives you the API URL for it.
 - `GET /kentaa` returns the preconfigured fundraiser.
-- `GET /fundraiser?url=<fundraiser page>` returns any Kentaa fundraiser (URL-encode the page), e.g.
+- `GET /fundraiser?url=<fundraiser page>` returns any iRaiser (Kentaa) fundraiser, team or campaign, or a Securycast, Nenäpäivä or Mielipotti fundraiser (URL-encode the page), e.g.
 
   ```
   GET http://localhost:8080/fundraiser?url=https%3A%2F%2Foma.wwf.fi%2Ffundraisers%2Fvauhtijuoksuplus2025
