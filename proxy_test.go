@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+)
 
 func TestParseKentaaIDs(t *testing.T) {
 	page := []byte(`<html><body data-site-id="Dp9tjHj3gsVn" data-project-id="TRFw6r4CiRFm" data-action-id="znQjamA72ySe"><div data-site-id="nope"></div></body>`)
@@ -51,5 +54,26 @@ func TestParseNenapaiva(t *testing.T) {
 	got, ok := parseNenapaiva(page)
 	if !ok || got != (ProxyResult{TargetAmount: 2000, TotalAmount: "1381"}) {
 		t.Fatalf("got %+v %v", got, ok)
+	}
+}
+
+func TestStatsRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "stats.json")
+	pollStats = map[string]*pollStat{}
+	if err := loadStats(path); err != nil {
+		t.Fatalf("missing file: %v", err)
+	}
+	countPoll("a")
+	countPoll("a")
+	if err := saveStats(path); err != nil {
+		t.Fatal(err)
+	}
+	pollStats = map[string]*pollStat{}
+	if err := loadStats(path); err != nil {
+		t.Fatal(err)
+	}
+	countPoll("a")
+	if got := pollStats["a"].Polls; got != 3 {
+		t.Fatalf("got %d polls, want 3", got)
 	}
 }

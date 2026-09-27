@@ -6,11 +6,14 @@ import (
 	"flag"
 	"fmt"
 	"html"
+	"html/template"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -67,6 +70,7 @@ func kentaaHandler(w http.ResponseWriter, r *http.Request) {
 	if time.Now().Before(kentaaCacheExpiry) && kentaaCacheData != nil {
 		data := kentaaCacheData
 		kentaaCacheMutex.Unlock()
+		countPoll("kentaa")
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(data)
 		return
@@ -120,6 +124,7 @@ func kentaaHandler(w http.ResponseWriter, r *http.Request) {
 	kentaaCacheData = finalData
 	kentaaCacheExpiry = time.Now().Add(cacheDuration)
 	kentaaCacheMutex.Unlock()
+	countPoll("kentaa")
 
 	// Return the filtered JSON response.
 	w.Header().Set("Content-Type", "application/json")
@@ -140,6 +145,59 @@ var (
 	fundraiserEntries = map[string]fundraiserEntry{}
 	fundraiserMutex   sync.Mutex
 )
+
+// Poll counts per fundraiser (or "kentaa"), shown at /stats. Counted in memory
+// and saved to a JSON file every minute, so a restart loses at most a minute.
+type pollStat struct {
+	Polls    int       `json:"polls"`
+	LastPoll time.Time `json:"last_poll"`
+}
+
+var (
+	pollStats = map[string]*pollStat{}
+	pollMutex sync.Mutex
+)
+
+func countPoll(key string) {
+	pollMutex.Lock()
+	defer pollMutex.Unlock()
+	st := pollStats[key]
+	if st == nil {
+		st = &pollStat{}
+		pollStats[key] = st
+	}
+	st.Polls++
+	st.LastPoll = time.Now().UTC().Truncate(time.Second)
+}
+
+// loadStats reads saved poll counts; a missing file just means a fresh start.
+func loadStats(path string) error {
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	pollMutex.Lock()
+	defer pollMutex.Unlock()
+	return json.Unmarshal(data, &pollStats)
+}
+
+// saveStats writes the poll counts to a temp file and renames it over path,
+// so a crash mid-write never leaves a broken file.
+func saveStats(path string) error {
+	pollMutex.Lock()
+	data, err := json.MarshalIndent(pollStats, "", "  ")
+	pollMutex.Unlock()
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path+".tmp", data, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(path+".tmp", path)
+}
 
 var httpClient = &http.Client{Timeout: 10 * time.Second}
 
@@ -165,6 +223,11 @@ var indexHTML []byte
 
 //go:embed widget.html
 var widgetHTML []byte
+
+//go:embed stats.html
+var statsHTML string
+
+var statsTemplate = template.Must(template.New("stats").Parse(statsHTML))
 
 // parseKentaaIDs extracts the site ID and API path from a Kentaa page. A
 // fundraiser page also names its team and project, so the most specific wins.
@@ -327,6 +390,7 @@ func fundraiserHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Return cached response if valid.
 	if time.Now().Before(entry.expiry) && entry.data != nil {
+		countPoll(key)
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(entry.data)
 		return
@@ -351,9 +415,28 @@ func fundraiserHandler(w http.ResponseWriter, r *http.Request) {
 	fundraiserMutex.Lock()
 	fundraiserEntries[key] = entry
 	fundraiserMutex.Unlock()
+	countPoll(key)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(finalData)
+}
+
+// statsHandler shows how often each fundraiser has been polled, most polled first.
+func statsHandler(w http.ResponseWriter, r *http.Request) {
+	type row struct {
+		Key string
+		pollStat
+	}
+	pollMutex.Lock()
+	rows := make([]row, 0, len(pollStats))
+	for key, st := range pollStats {
+		rows = append(rows, row{key, *st})
+	}
+	pollMutex.Unlock()
+	sort.Slice(rows, func(i, j int) bool { return rows[i].Polls > rows[j].Polls })
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	statsTemplate.Execute(w, rows)
 }
 
 // indexHandler serves the UI for building a /fundraiser URL.
@@ -375,13 +458,26 @@ func widgetHandler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	// Read port from command line with a default value.
 	port := flag.String("port", "8080", "Port to run the proxy server on")
+	statsFile := flag.String("stats", "stats.json", "File to save poll stats in")
 	flag.Parse()
+
+	if err := loadStats(*statsFile); err != nil {
+		log.Fatalf("loading stats: %v", err)
+	}
+	go func() {
+		for range time.Tick(time.Minute) {
+			if err := saveStats(*statsFile); err != nil {
+				log.Printf("saving stats: %v", err)
+			}
+		}
+	}()
 
 	http.HandleFunc("/kentaa", kentaaHandler)
 	http.HandleFunc("/fundraiser", fundraiserHandler)
 	http.HandleFunc("/widget", widgetHandler)
+	http.HandleFunc("/stats", statsHandler)
 	http.HandleFunc("/", indexHandler)
 	log.Printf("Proxy server is running on port %s...\n", *port)
-	log.Printf("Endpoints: /kentaa, /fundraiser?url=<fundraiser page>, /widget?url=<fundraiser page>, /\n")
+	log.Printf("Endpoints: /kentaa, /fundraiser?url=<fundraiser page>, /widget?url=<fundraiser page>, /stats, /\n")
 	log.Fatal(http.ListenAndServe(":"+*port, nil))
 }

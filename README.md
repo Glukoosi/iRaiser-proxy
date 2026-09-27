@@ -2,7 +2,7 @@
 
 A small Go server that fetches a fundraiser's goal and total and returns them as simple JSON. It also serves a stream overlay widget for OBS.
 
-Supports iRaiser (Kentaa) fundraisers, teams and campaigns (e.g. oma.wwf.fi, lahjoita.punainenristi.fi, oma.kummit.fi), plus Securycast, Nenäpäivä and Mielipotti. Responses are cached for 5 seconds and CORS is allowed.
+Supports iRaiser (Kentaa) fundraisers, teams and campaigns (e.g. oma.wwf.fi, lahjoita.punainenristi.fi), plus Securycast (e.g. Lastenklinikoiden Kummit), Nenäpäivä and Mielipotti. Responses are cached for 5 seconds and CORS is allowed.
 
 ## Run
 
@@ -29,6 +29,7 @@ go test
 - `GET /fundraiser?url=<fundraiser page>` returns the amounts for any supported fundraiser (URL-encode the page address).
 - `GET /widget?url=<fundraiser page>` is a transparent overlay showing the live total. Optional: `color=ffffff`, `size=64`, `font=Syncopate|Montserrat|Bebas+Neue|Press+Start+2P|system`, `goal=1`.
 - `GET /kentaa` returns the built-in default fundraiser.
+- `GET /stats` is a page showing how many times each fundraiser has been polled and when it was last polled. Saved to `stats.json` every minute (change with `-stats <file>`).
 
 The JSON looks like this:
 
