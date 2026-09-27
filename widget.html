@@ -7,11 +7,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <style>
     body { margin: 0; background: transparent; }
-    #amount { font-size: 32px; font-weight: 700; font-family: system-ui, sans-serif; }
+    #amount { font-size: 32px; font-weight: 700; font-family: system-ui, sans-serif; opacity: 0; transition: opacity .3s; }
   </style>
 </head>
 <body>
-  <div id="amount">0 €</div>
+  <div id="amount"></div>
 
   <script>
     // Shows a fundraiser's live total: ?url=<fundraiser page>, or the /kentaa fundraiser without it.
@@ -30,10 +30,15 @@
       "Press Start 2P": ["Press+Start+2P", 400],
     };
     const font = params.get("font") || "Syncopate";
+    let fontReady = Promise.resolve();
     if (font in fonts) {
       const [query, weight] = fonts[font];
-      document.head.insertAdjacentHTML("beforeend",
-        `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=${query}&display=swap">`);
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = `https://fonts.googleapis.com/css2?family=${query}&display=swap`;
+      fontReady = new Promise(resolve => link.onload = link.onerror = resolve)
+        .then(() => document.fonts.load(`${weight} 1em "${font}"`, "0123456789 €/"));
+      document.head.append(link);
       amount.style.fontFamily = `"${font}", sans-serif`;
       amount.style.fontWeight = weight;
     }
@@ -52,7 +57,11 @@
       }
     }
 
-    update();
+    // Fade in once the font and first amount are in, so the widget doesn't jump on load.
+    // Shows anyway after 3 seconds if either is slow.
+    const show = () => amount.style.opacity = 1;
+    Promise.race([Promise.all([fontReady, update()]), new Promise(resolve => setTimeout(resolve, 3000))])
+      .then(show, show);
     setInterval(update, 10000);
   </script>
 </body>
