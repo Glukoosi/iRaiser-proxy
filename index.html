@@ -1,41 +1,136 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>iRaiser fundraiser API</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Syncopate:wght@700&display=swap');
+    :root {
+      --bg: #f5f5f4; --card: #fff; --text: #1c1917; --muted: #57534e;
+      --border: #e7e5e4; --accent: #15803d; --code: #f5f5f4; --error: #b91c1c;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1c1917; --card: #292524; --text: #f5f5f4; --muted: #a8a29e;
+        --border: #44403c; --accent: #4ade80; --code: #1c1917; --error: #f87171;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, sans-serif; }
+    main { max-width: 42rem; margin: 0 auto; padding: 2rem 1rem; }
+    h1 { margin: 0 0 .25rem; font-size: 1.75rem; }
+    h2 { margin: 0 0 .75rem; font-size: 1.1rem; }
+    .lead { margin: 0 0 1.5rem; color: var(--muted); }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: .75rem; padding: 1.25rem; margin-bottom: 1rem; }
+    form { display: flex; gap: .5rem; flex-wrap: wrap; }
+    input { flex: 1 1 16rem; min-width: 0; padding: .6rem .75rem; font: inherit; color: inherit; background: var(--code); border: 1px solid var(--border); border-radius: .5rem; }
+    button { padding: .6rem 1rem; font: inherit; font-weight: 600; color: var(--card); background: var(--accent); border: 0; border-radius: .5rem; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: wait; }
+    .row { display: flex; gap: .5rem; align-items: stretch; }
+    code, pre { font: .875rem/1.5 ui-monospace, monospace; background: var(--code); border: 1px solid var(--border); border-radius: .5rem; }
+    .row code { flex: 1; padding: .6rem .75rem; overflow-wrap: anywhere; }
+    pre { margin: 0; padding: .75rem; overflow-x: auto; }
+    .amount { font-size: 2rem; font-weight: 700; margin: .75rem 0 .25rem; }
+    .amount small { font-size: 1rem; font-weight: 400; color: var(--muted); }
+    progress { width: 100%; accent-color: var(--accent); }
+    ol { margin: 0; padding-left: 1.25rem; }
+    li + li { margin-top: .5rem; }
+    .muted { color: var(--muted); font-size: .875rem; }
+    #error { color: var(--error); margin: .75rem 0 0; }
+    #error:empty { display: none; }
   </style>
-  <script type="text/javascript">
-    function retrieve(url, callback) {
-      var xhttp = new XMLHttpRequest();
-      xhttp.onreadystatechange = function() {
-        if (this.readyState === 4 && this.status === 200) {
-          callback(JSON.parse(xhttp.responseText));
-        }
-      };
-      xhttp.open("GET", url, true);
-      xhttp.send();
-    }
-
-    function updateAmount() {
-      // Use the new proxy API endpoint here.
-      retrieve("http://localhost:8080", function(response) {
-        // The API returns JSON with "total_amount". Display it with the euro sign.
-        document.getElementById("amount").innerHTML = parseInt(response.total_amount, 10).toString() + " &euro;";
-      });
-    }
-
-    function startUpdating() {
-      // Update the amount every 30 seconds.
-      window.setInterval(updateAmount, 30000);
-      updateAmount();
-    }
-
-    window.onload = startUpdating;
-  </script>
 </head>
 <body>
-  <div id="amount">0 &euro;</div>
+  <main>
+    <h1>iRaiser fundraiser API</h1>
+    <p class="lead">Get a live JSON feed of your fundraiser's total for stream overlays, widgets and scripts.</p>
+
+    <section class="card">
+      <form>
+        <input type="url" name="url" placeholder="https://oma.wwf.fi/fundraisers/..." aria-label="Fundraiser page address" required>
+        <button>Get URL</button>
+      </form>
+      <p id="error"></p>
+    </section>
+
+    <section class="card" id="result" hidden>
+      <h2>Your API URL</h2>
+      <div class="row">
+        <code id="api"></code>
+        <button type="button" id="copy">Copy</button>
+      </div>
+      <div class="amount" id="amount"></div>
+      <progress id="progress" hidden></progress>
+      <p class="muted">Current response:</p>
+      <pre id="response"></pre>
+    </section>
+
+    <section class="card">
+      <h2>How to use</h2>
+      <ol>
+        <li>Open your fundraiser page on the charity's iRaiser site (for example <em>oma.wwf.fi</em>) and copy its address from the browser.</li>
+        <li>Paste the address above and press <strong>Get URL</strong>.</li>
+        <li>Use the API URL wherever you need the numbers. It returns:
+          <pre>{
+  "target_amount": 5000,      // goal in euros, 0 if none
+  "total_amount": "4159.02"   // raised so far, as a string
+}</pre>
+        </li>
+        <li>Poll it as often as you like; results refresh every 5 seconds. For example:
+          <pre>const res = await fetch(API_URL);
+const { total_amount } = await res.json();</pre>
+        </li>
+      </ol>
+      <p class="muted">The fundraiser page must be public. Private or removed fundraisers can't be looked up.</p>
+    </section>
+  </main>
+
+  <script>
+    // The form submits to this same page as ?url=...
+    const page = new URLSearchParams(location.search).get("url");
+    const $ = id => document.getElementById(id);
+    const euros = n => Math.floor(n).toLocaleString("fi-FI") + " €";
+
+    const errors = {
+      400: "That doesn't look like a web address. Paste the full https:// address of the fundraiser page.",
+      502: "Couldn't find an iRaiser fundraiser on that page. Check the address and that the fundraiser is public.",
+    };
+
+    async function show() {
+      document.querySelector("input").value = page;
+      const button = document.querySelector("form button");
+      button.disabled = true;
+      button.textContent = "Loading…";
+
+      const api = new URL("/fundraiser?url=" + encodeURIComponent(page), location.href).href;
+      try {
+        const res = await fetch(api);
+        if (!res.ok) throw new Error(errors[res.status] || "Something went wrong. Try again in a moment.");
+        const text = await res.text();
+        const data = JSON.parse(text);
+        const total = parseFloat(data.total_amount);
+
+        $("api").textContent = api;
+        $("amount").innerHTML = euros(total) + (data.target_amount ? " <small>of " + euros(data.target_amount) + "</small>" : "");
+        $("progress").hidden = !data.target_amount;
+        $("progress").max = data.target_amount;
+        $("progress").value = total;
+        $("response").textContent = text;
+        $("result").hidden = false;
+      } catch (e) {
+        $("error").textContent = e.message;
+      }
+      button.disabled = false;
+      button.textContent = "Get URL";
+    }
+
+    $("copy").onclick = async () => {
+      await navigator.clipboard.writeText($("api").textContent);
+      $("copy").textContent = "Copied";
+      setTimeout(() => $("copy").textContent = "Copy", 1500);
+    };
+
+    if (page) show();
+  </script>
 </body>
 </html>

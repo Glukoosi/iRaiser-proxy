@@ -35,13 +35,15 @@ chmod +x proxy
 
 ## API
 
-Make a GET request to the root path:
+- `GET /` serves a UI: paste a Kentaa fundraiser page and it gives you the API URL for it.
+- `GET /kentaa` returns the preconfigured fundraiser.
+- `GET /fundraiser?url=<fundraiser page>` returns any Kentaa fundraiser (URL-encode the page), e.g.
 
-```
-GET http://localhost:8080/
-```
+  ```
+  GET http://localhost:8080/fundraiser?url=https%3A%2F%2Foma.wwf.fi%2Ffundraisers%2Fvauhtijuoksuplus2025
+  ```
 
-The response will be JSON in this format:
+Both JSON endpoints respond in this format:
 
 ```json
 {
@@ -49,23 +51,6 @@ The response will be JSON in this format:
   "total_amount": "750.00"
 }
 ```
-
-## Testing with HTML frontend
-
-1. Start the proxy server:
-   ```
-   go run proxy.go -port 8080
-   ```
-
-2. Open the `index.html` file in a browser. You can do this directly from the file system or serve it using a simple HTTP server:
-   ```
-   python3 -m http.server 8000
-   ```
-   Then navigate to `http://localhost:8000/index.html`
-
-3. The page will display the total amount and automatically refresh every 30 seconds.
-
-4. Ensure the proxy server is running on the same port specified in the JavaScript code (`http://localhost:8080`).
 
 ## Configuration
 

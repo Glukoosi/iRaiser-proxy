@@ -1,28 +1,24 @@
 package main
 
 import (
+	_ "embed"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"regexp"
-	"strconv"
 	"sync"
 	"time"
 )
 
 // Kentaa API configuration.
 var (
-	kentaaURL         = "https://frontend-api.kentaa.nl/actions/DHHj8a7itW5G"
+	kentaaURL         = "https://frontend-api.kentaa.nl/actions/xF7BY4oprbNi"
 	kentaaHeaderKey   = "x-site-id"
-	kentaaHeaderValue = "o9vDUSYsMfDp"
-)
-
-// Securycast page configuration (scraping SSR page instead of delayed API).
-var (
-	securycastURL = "https://oma.kummit.fi/keräys/nurmikkotv-2026"
+	kentaaHeaderValue = "LqS5hWxATJhq"
 )
 
 // Cache variables for Kentaa.
@@ -30,13 +26,6 @@ var (
 	kentaaCacheData   []byte
 	kentaaCacheExpiry time.Time
 	kentaaCacheMutex  sync.Mutex
-)
-
-// Cache variables for Securycast.
-var (
-	securycastCacheData   []byte
-	securycastCacheExpiry time.Time
-	securycastCacheMutex  sync.Mutex
 )
 
 var cacheDuration = 5 * time.Second
@@ -48,13 +37,6 @@ type KentaaResponse struct {
 		TotalAmount  string `json:"total_amount"`
 	} `json:"data"`
 }
-
-// Regex to parse donation amount from SSR page (matches "X € kerätty" pattern).
-// Handles thousand separators (spaces, non-breaking spaces, and &#xA0; HTML entities),
-// and the HTML entity &euro; as well as the literal € character.
-var donationRegex = regexp.MustCompile(`([\d\s\x{00A0},]+(?:&#xA0;[\d,]+)*)[\s\x{00A0}]*(?:€|&euro;)[\s\x{00A0}]*kerätty`)
-var spaceStripRegex = regexp.MustCompile(`[\s\x{00A0}]+|&#xA0;`)
-var decimalStripRegex = regexp.MustCompile(`,\d*$`)
 
 // ProxyResult is the structure for our proxied output.
 type ProxyResult struct {
@@ -141,7 +123,63 @@ func kentaaHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(finalData)
 }
 
-func securycastHandler(w http.ResponseWriter, r *http.Request) {
+// fundraiserEntry holds the resolved Kentaa IDs of a fundraiser page and its cached result.
+type fundraiserEntry struct {
+	siteID, actionID string
+	data             []byte
+	expiry           time.Time
+}
+
+// Fundraiser entries keyed by page host+path.
+// ponytail: unbounded map, add eviction if it grows too big.
+var (
+	fundraiserEntries = map[string]fundraiserEntry{}
+	fundraiserMutex   sync.Mutex
+)
+
+var httpClient = &http.Client{Timeout: 10 * time.Second}
+
+// Kentaa pages expose their IDs as data attributes on the <body> tag.
+var bodyTagRegex = regexp.MustCompile(`<body[^>]*>`)
+var kentaaAttrRegex = regexp.MustCompile(`data-(site-id|action-id)="([A-Za-z0-9]+)"`)
+
+//go:embed index.html
+var indexHTML []byte
+
+// parseKentaaIDs extracts the site and action IDs from a Kentaa fundraiser page.
+func parseKentaaIDs(page []byte) (siteID, actionID string, ok bool) {
+	for _, m := range kentaaAttrRegex.FindAllSubmatch(bodyTagRegex.Find(page), -1) {
+		if string(m[1]) == "site-id" {
+			siteID = string(m[2])
+		} else {
+			actionID = string(m[2])
+		}
+	}
+	return siteID, actionID, siteID != "" && actionID != ""
+}
+
+// resolveFundraiserPage fetches a fundraiser page and returns an entry with its IDs.
+func resolveFundraiserPage(pageURL string) (fundraiserEntry, error) {
+	resp, err := httpClient.Get(pageURL)
+	if err != nil {
+		return fundraiserEntry{}, err
+	}
+	defer resp.Body.Close()
+
+	page, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		return fundraiserEntry{}, err
+	}
+
+	siteID, actionID, ok := parseKentaaIDs(page)
+	if !ok {
+		return fundraiserEntry{}, fmt.Errorf("no Kentaa IDs found")
+	}
+	return fundraiserEntry{siteID: siteID, actionID: actionID}, nil
+}
+
+// fundraiserHandler serves any Kentaa fundraiser given as ?url=<fundraiser page>.
+func fundraiserHandler(w http.ResponseWriter, r *http.Request) {
 	setCORSHeaders(w)
 
 	// Handle preflight requests.
@@ -150,77 +188,87 @@ func securycastHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return cached response if valid.
-	securycastCacheMutex.Lock()
-	if time.Now().Before(securycastCacheExpiry) && securycastCacheData != nil {
-		data := securycastCacheData
-		securycastCacheMutex.Unlock()
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(data)
+	u, err := url.Parse(r.URL.Query().Get("url"))
+	if err != nil || u.Scheme != "https" || u.Host == "" {
+		http.Error(w, "url must be an https Kentaa fundraiser page", http.StatusBadRequest)
 		return
 	}
-	securycastCacheMutex.Unlock()
+	key := u.Host + u.Path
 
-	// Create request to Securycast API.
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", securycastURL, nil)
+	fundraiserMutex.Lock()
+	entry, known := fundraiserEntries[key]
+	fundraiserMutex.Unlock()
+
+	// Return cached response if valid.
+	if time.Now().Before(entry.expiry) && entry.data != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(entry.data)
+		return
+	}
+
+	// Resolve IDs from the page the first time a URL is seen.
+	if !known {
+		entry, err = resolveFundraiserPage("https://" + key)
+		if err != nil {
+			http.Error(w, "Error reading Kentaa IDs from page", http.StatusBadGateway)
+			return
+		}
+	}
+
+	// Create request to Kentaa API.
+	req, err := http.NewRequest("GET", "https://frontend-api.kentaa.nl/actions/"+entry.actionID, nil)
 	if err != nil {
 		http.Error(w, "Error creating request", http.StatusInternalServerError)
 		return
 	}
+	req.Header.Set(kentaaHeaderKey, entry.siteID)
 
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		http.Error(w, "Error fetching remote data", http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
-
-	// Read the upstream HTML response.
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		http.Error(w, "Error reading response", http.StatusInternalServerError)
+	if resp.StatusCode != http.StatusOK {
+		http.Error(w, fmt.Sprintf("Kentaa API returned %d", resp.StatusCode), http.StatusBadGateway)
 		return
 	}
 
-	// Parse the donation amount from the SSR HTML page.
-	matches := donationRegex.FindSubmatch(body)
-	if matches == nil || len(matches) < 2 {
-		http.Error(w, "Error parsing donation amount from page", http.StatusInternalServerError)
+	// Parse the upstream JSON.
+	var upstream KentaaResponse
+	if err := json.NewDecoder(resp.Body).Decode(&upstream); err != nil {
+		http.Error(w, "Error parsing upstream JSON", http.StatusInternalServerError)
 		return
 	}
 
-	// Remove spaces, non-breaking spaces, and decimal part from the amount string.
-	amountStr := spaceStripRegex.ReplaceAllString(string(matches[1]), "")
-	amountStr = decimalStripRegex.ReplaceAllString(amountStr, "")
-
-	amount, err := strconv.Atoi(amountStr)
-	if err != nil {
-		http.Error(w, "Error converting donation amount", http.StatusInternalServerError)
-		return
-	}
-
-	// Prepare our proxied response.
-	proxyResult := ProxyResult{
-		TargetAmount: 0, // No goal shown on page
-		TotalAmount:  fmt.Sprintf("%d", amount),
-	}
-
-	finalData, err := json.Marshal(proxyResult)
+	finalData, err := json.Marshal(ProxyResult{
+		TargetAmount: upstream.Data.TargetAmount,
+		TotalAmount:  upstream.Data.TotalAmount,
+	})
 	if err != nil {
 		http.Error(w, "Error creating response JSON", http.StatusInternalServerError)
 		return
 	}
 
 	// Cache the final result.
-	securycastCacheMutex.Lock()
-	securycastCacheData = finalData
-	securycastCacheExpiry = time.Now().Add(cacheDuration)
-	securycastCacheMutex.Unlock()
+	entry.data = finalData
+	entry.expiry = time.Now().Add(cacheDuration)
+	fundraiserMutex.Lock()
+	fundraiserEntries[key] = entry
+	fundraiserMutex.Unlock()
 
-	// Return the filtered JSON response.
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(finalData)
+}
+
+// indexHandler serves the UI for building a /fundraiser URL.
+func indexHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(indexHTML)
 }
 
 func main() {
@@ -229,8 +277,9 @@ func main() {
 	flag.Parse()
 
 	http.HandleFunc("/kentaa", kentaaHandler)
-	http.HandleFunc("/", securycastHandler)
+	http.HandleFunc("/fundraiser", fundraiserHandler)
+	http.HandleFunc("/", indexHandler)
 	log.Printf("Proxy server is running on port %s...\n", *port)
-	log.Printf("Endpoints: /kentaa, /\n")
+	log.Printf("Endpoints: /kentaa, /fundraiser?url=<fundraiser page>, /\n")
 	log.Fatal(http.ListenAndServe(":"+*port, nil))
 }
