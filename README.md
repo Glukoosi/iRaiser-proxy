@@ -1,50 +1,36 @@
 # iRaiser Proxy
 
-A simple proxy server that retrieves fundraising data from iRaiser API and returns only the target and total amounts.
+A small Go server that fetches a fundraiser's goal and total and returns them as simple JSON. It also serves a stream overlay widget for OBS.
 
-## Features
+Supports iRaiser (Kentaa) fundraisers, teams and campaigns (e.g. oma.wwf.fi, lahjoita.punainenristi.fi, oma.kummit.fi), plus Securycast, Nenäpäivä and Mielipotti. Responses are cached for 5 seconds and CORS is allowed.
 
-- Caches responses for 5 seconds to reduce load on the upstream API
-- Handles CORS for cross-origin requests
-- Returns simplified JSON with only the necessary data
-
-## Usage
-
-### Run from source
-
-Start the server with an optional port parameter:
+## Run
 
 ```
 go run proxy.go -port 8080
 ```
 
-### Build and run for linux server
-
-Build the binary:
+Build for a Linux server:
 
 ```
 env GOOS=linux GOARCH=amd64 go build proxy.go
-```
-
-Make it executable and run:
-
-```
-chmod +x proxy
 ./proxy -port 8080
 ```
 
-## API
+Test:
 
-- `GET /` serves a UI: paste a fundraiser page and it gives you the API URL for it.
-- `GET /widget?url=<fundraiser page>` serves a stream overlay (e.g. OBS browser source) showing the live total; without `url` it shows the `/kentaa` fundraiser. Optional styling: `color=ffffff`, `size=64` (px), `font=Syncopate|Montserrat|Bebas Neue|Press Start 2P|system`, `goal=1`.
-- `GET /kentaa` returns the preconfigured fundraiser.
-- `GET /fundraiser?url=<fundraiser page>` returns any iRaiser (Kentaa) fundraiser, team or campaign, or a Securycast, Nenäpäivä or Mielipotti fundraiser (URL-encode the page), e.g.
+```
+go test
+```
 
-  ```
-  GET http://localhost:8080/fundraiser?url=https%3A%2F%2Foma.wwf.fi%2Ffundraisers%2Fvauhtijuoksuplus2025
-  ```
+## Endpoints
 
-Both JSON endpoints respond in this format:
+- `GET /` is a page where you paste a fundraiser address and get the API and widget URLs.
+- `GET /fundraiser?url=<fundraiser page>` returns the amounts for any supported fundraiser (URL-encode the page address).
+- `GET /widget?url=<fundraiser page>` is a transparent overlay showing the live total. Optional: `color=ffffff`, `size=64`, `font=Syncopate|Montserrat|Bebas+Neue|Press+Start+2P|system`, `goal=1`.
+- `GET /kentaa` returns the built-in default fundraiser.
+
+The JSON looks like this:
 
 ```json
 {
@@ -52,7 +38,3 @@ Both JSON endpoints respond in this format:
   "total_amount": "750.00"
 }
 ```
-
-## Configuration
-
-The proxy is configured to fetch data from a specific iRaiser endpoint with required headers.

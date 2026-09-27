@@ -38,6 +38,8 @@
     code, pre { font: .875rem/1.5 ui-monospace, monospace; background: var(--code); border: 1px solid var(--border); border-radius: .5rem; }
     .row code { flex: 1; padding: .6rem .75rem; overflow-wrap: anywhere; }
     pre { margin: 0; padding: .75rem; overflow-x: auto; }
+    li code { padding: 0 .3rem; }
+    li ol { margin: .25rem 0 .5rem; }
     .amount { font-size: 2rem; font-weight: 700; margin: 0 0 .25rem; }
     #result h2 { margin-top: 1.5rem; }
     .amount small { font-size: 1rem; font-weight: 400; color: var(--muted); }
@@ -45,6 +47,7 @@
     ol { margin: 0; padding-left: 1.25rem; }
     li + li { margin-top: .5rem; }
     .muted { color: var(--muted); font-size: .875rem; }
+    .muted a { color: inherit; }
     #error { color: var(--error); margin: .75rem 0 0; }
     #error:empty { display: none; }
   </style>
@@ -104,8 +107,16 @@
       <ol>
         <li>Open your fundraiser page (for example on <em>oma.wwf.fi</em>, <em>lahjoita.punainenristi.fi</em>, <em>oma.kummit.fi</em>, <em>nenapaiva.fi</em> or <em>mielipotti.fi</em>) and copy its address from the browser.</li>
         <li>Paste the address above and press <strong>Get URL</strong>.</li>
-        <li>For a stream overlay, pick the widget's color, size and font, then add the widget URL as a
-          <strong>Browser source</strong> in OBS. It has a transparent background and updates every 10 seconds.</li>
+        <li>For a stream overlay, use the widget:
+          <ol type="a">
+            <li>Under <strong>Widget</strong>, pick the color, size and font, and tick <strong>Show goal</strong> to show the target too. The preview and widget URL update as you go.</li>
+            <li>Copy the widget URL.</li>
+            <li>In OBS, add a source with <strong>+</strong> → <strong>Browser</strong>, paste the URL and set the width and height, for example 800 × 200.
+              Streamlabs and other streaming apps have the same kind of browser source.</li>
+          </ol>
+          The widget has a transparent background and updates every 10 seconds. To change its look later, come back here or edit the URL:
+          <code>color=ffffff</code>, <code>size=64</code>, <code>font=Bebas+Neue</code>, <code>goal=1</code>.
+        </li>
         <li>To build your own display, use the API URL. It returns:
           <pre>{
   "target_amount": 5000,      // goal in euros, 0 if none
@@ -119,6 +130,7 @@ const { total_amount } = await res.json();</pre>
       </ol>
       <p class="muted">The fundraiser page must be public. Private or removed fundraisers can't be looked up.</p>
     </section>
+    <p class="muted"><a href="https://github.com/Glukoosi/iRaiser-proxy">Source on GitHub</a> · Made by <a href="https://glukoo.si">glukoo.si</a></p>
   </main>
 
   <script>
