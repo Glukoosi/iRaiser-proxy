@@ -23,14 +23,23 @@
     .lead { margin: 0 0 1.5rem; color: var(--muted); }
     .card { background: var(--card); border: 1px solid var(--border); border-radius: .75rem; padding: 1.25rem; margin-bottom: 1rem; }
     form { display: flex; gap: .5rem; flex-wrap: wrap; }
-    input { flex: 1 1 16rem; min-width: 0; padding: .6rem .75rem; font: inherit; color: inherit; background: var(--code); border: 1px solid var(--border); border-radius: .5rem; }
+    form input { flex: 1 1 16rem; min-width: 0; padding: .6rem .75rem; font: inherit; color: inherit; background: var(--code); border: 1px solid var(--border); border-radius: .5rem; }
     button { padding: .6rem 1rem; font: inherit; font-weight: 600; color: var(--card); background: var(--accent); border: 0; border-radius: .5rem; cursor: pointer; }
     button:disabled { opacity: .6; cursor: wait; }
     .row { display: flex; gap: .5rem; align-items: stretch; }
+    .options { flex-wrap: wrap; gap: .75rem 1.5rem; }
+    .options label { display: flex; align-items: center; gap: .5rem; }
+    .options input, .options select { flex: none; padding: .3rem .5rem; }
+    .options input[type=number] { width: 5rem; }
+    .options input[type=color] { width: 3rem; height: 2rem; padding: .15rem; }
+    .options select { font: inherit; color: inherit; background: var(--code); border: 1px solid var(--border); border-radius: .5rem; }
+    iframe { display: block; width: 100%; margin-bottom: .75rem; border: 1px dashed var(--border); border-radius: .5rem;
+      background: repeating-conic-gradient(#ccc 0 25%, #fff 0 50%) 0 0 / 16px 16px; }
     code, pre { font: .875rem/1.5 ui-monospace, monospace; background: var(--code); border: 1px solid var(--border); border-radius: .5rem; }
     .row code { flex: 1; padding: .6rem .75rem; overflow-wrap: anywhere; }
     pre { margin: 0; padding: .75rem; overflow-x: auto; }
-    .amount { font-size: 2rem; font-weight: 700; margin: .75rem 0 .25rem; }
+    .amount { font-size: 2rem; font-weight: 700; margin: 0 0 .25rem; }
+    #result h2 { margin-top: 1.5rem; }
     .amount small { font-size: 1rem; font-weight: 400; color: var(--muted); }
     progress { width: 100%; accent-color: var(--accent); }
     ol { margin: 0; padding-left: 1.25rem; }
@@ -43,7 +52,7 @@
 <body>
   <main>
     <h1>Fundraiser API</h1>
-    <p class="lead">Get a live JSON feed of your fundraiser's total for stream overlays, widgets and scripts.
+    <p class="lead">Get a live stream widget or JSON feed of your fundraiser's total.
       Works with fundraiser, team and campaign pages on iRaiser (e.g. WWF, Punainen Risti, Unicef, Syöpäsäätiö, Pelastakaa Lapset),
       Securycast (e.g. Lastenklinikoiden Kummit, HelsinkiMissio), Nenäpäivä and MIELI ry's Mielipotti.</p>
 
@@ -56,15 +65,38 @@
     </section>
 
     <section class="card" id="result" hidden>
-      <h2>Your API URL</h2>
-      <div class="row">
-        <code id="api"></code>
-        <button type="button" id="copy">Copy</button>
-      </div>
       <div class="amount" id="amount"></div>
       <progress id="progress" hidden></progress>
+
+      <h2>API URL</h2>
+      <div class="row">
+        <code id="api"></code>
+        <button type="button" data-copy="api">Copy</button>
+      </div>
       <p class="muted">Current response:</p>
       <pre id="response"></pre>
+
+      <h2>Widget</h2>
+      <form id="options" class="options" onsubmit="return false">
+        <label>Color <input type="color" name="color" value="#000000"></label>
+        <label>Size <input type="number" name="size" value="32" min="8" max="400"> px</label>
+        <label>Font
+          <select name="font">
+            <option>Syncopate</option>
+            <option>Montserrat</option>
+            <option>Bebas Neue</option>
+            <option>Press Start 2P</option>
+            <option value="system">System</option>
+          </select>
+        </label>
+        <label><input type="checkbox" name="goal"> Show goal</label>
+      </form>
+      <p class="muted">Preview:</p>
+      <iframe id="preview" title="Widget preview"></iframe>
+      <div class="row">
+        <code id="widget"></code>
+        <button type="button" data-copy="widget">Copy</button>
+      </div>
     </section>
 
     <section class="card">
@@ -72,7 +104,9 @@
       <ol>
         <li>Open your fundraiser page (for example on <em>oma.wwf.fi</em>, <em>lahjoita.punainenristi.fi</em>, <em>oma.kummit.fi</em>, <em>nenapaiva.fi</em> or <em>mielipotti.fi</em>) and copy its address from the browser.</li>
         <li>Paste the address above and press <strong>Get URL</strong>.</li>
-        <li>Use the API URL wherever you need the numbers. It returns:
+        <li>For a stream overlay, pick the widget's color, size and font, then add the widget URL as a
+          <strong>Browser source</strong> in OBS. It has a transparent background and updates every 10 seconds.</li>
+        <li>To build your own display, use the API URL. It returns:
           <pre>{
   "target_amount": 5000,      // goal in euros, 0 if none
   "total_amount": "4159.02"   // raised so far, as a string
@@ -112,6 +146,7 @@ const { total_amount } = await res.json();</pre>
         const data = JSON.parse(text);
         const total = parseFloat(data.total_amount);
 
+        updateWidget();
         $("api").textContent = api;
         $("amount").innerHTML = euros(total) + (data.target_amount ? " <small>of " + euros(data.target_amount) + "</small>" : "");
         $("progress").hidden = !data.target_amount;
@@ -126,11 +161,29 @@ const { total_amount } = await res.json();</pre>
       button.textContent = "Get URL";
     }
 
-    $("copy").onclick = async () => {
-      await navigator.clipboard.writeText($("api").textContent);
-      $("copy").textContent = "Copied";
-      setTimeout(() => $("copy").textContent = "Copy", 1500);
-    };
+    // Builds the widget URL from the options, leaving out defaults to keep it short.
+    function updateWidget() {
+      const o = $("options").elements;
+      const params = new URLSearchParams({ url: page });
+      if (o.color.value !== "#000000") params.set("color", o.color.value.slice(1));
+      if (o.size.value !== "32") params.set("size", o.size.value);
+      if (o.font.value !== "Syncopate") params.set("font", o.font.value);
+      if (o.goal.checked) params.set("goal", "1");
+
+      const widget = new URL("/widget?" + params, location.href).href;
+      $("widget").textContent = widget;
+      $("preview").src = widget;
+      $("preview").style.height = Math.max(48, o.size.value * 1.5) + "px";
+    }
+    $("options").oninput = updateWidget;
+
+    for (const button of document.querySelectorAll("[data-copy]")) {
+      button.onclick = async () => {
+        await navigator.clipboard.writeText($(button.dataset.copy).textContent);
+        button.textContent = "Copied";
+        setTimeout(() => button.textContent = "Copy", 1500);
+      };
+    }
 
     if (page) show();
   </script>

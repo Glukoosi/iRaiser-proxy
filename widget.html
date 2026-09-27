@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fundraiser widget</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <style>
+    body { margin: 0; background: transparent; }
+    #amount { font-size: 32px; font-weight: 700; font-family: system-ui, sans-serif; }
+  </style>
+</head>
+<body>
+  <div id="amount">0 €</div>
+
+  <script>
+    // Shows a fundraiser's live total: ?url=<fundraiser page>, or the /kentaa fundraiser without it.
+    // Optional styling: &color=ffffff&size=64&font=Bebas+Neue&goal=1
+    const params = new URLSearchParams(location.search);
+    const page = params.get("url");
+    const api = page ? "/fundraiser?url=" + encodeURIComponent(page) : "/kentaa";
+    const amount = document.getElementById("amount");
+    const euros = n => Math.floor(n).toLocaleString("fi-FI") + " €";
+
+    // Google Fonts the widget offers: name -> [css2 family query, weight].
+    const fonts = {
+      "Syncopate": ["Syncopate:wght@700", 700],
+      "Montserrat": ["Montserrat:wght@800", 800],
+      "Bebas Neue": ["Bebas+Neue", 400],
+      "Press Start 2P": ["Press+Start+2P", 400],
+    };
+    const font = params.get("font") || "Syncopate";
+    if (font in fonts) {
+      const [query, weight] = fonts[font];
+      document.head.insertAdjacentHTML("beforeend",
+        `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=${query}&display=swap">`);
+      amount.style.fontFamily = `"${font}", sans-serif`;
+      amount.style.fontWeight = weight;
+    }
+    if (params.has("color")) amount.style.color = "#" + params.get("color");
+    if (params.has("size")) amount.style.fontSize = params.get("size") + "px";
+
+    async function update() {
+      try {
+        const res = await fetch(api);
+        if (!res.ok) return;
+        const data = await res.json();
+        const goal = params.has("goal") && data.target_amount ? " / " + euros(data.target_amount) : "";
+        amount.textContent = euros(parseFloat(data.total_amount)) + goal;
+      } catch {
+        // Keep showing the last amount until the next update.
+      }
+    }
+
+    update();
+    setInterval(update, 10000);
+  </script>
+</body>
+</html>

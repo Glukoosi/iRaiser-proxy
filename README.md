@@ -36,6 +36,7 @@ chmod +x proxy
 ## API
 
 - `GET /` serves a UI: paste a fundraiser page and it gives you the API URL for it.
+- `GET /widget?url=<fundraiser page>` serves a stream overlay (e.g. OBS browser source) showing the live total; without `url` it shows the `/kentaa` fundraiser. Optional styling: `color=ffffff`, `size=64` (px), `font=Syncopate|Montserrat|Bebas Neue|Press Start 2P|system`, `goal=1`.
 - `GET /kentaa` returns the preconfigured fundraiser.
 - `GET /fundraiser?url=<fundraiser page>` returns any iRaiser (Kentaa) fundraiser, team or campaign, or a Securycast, Nenäpäivä or Mielipotti fundraiser (URL-encode the page), e.g.
 

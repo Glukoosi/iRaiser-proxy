@@ -163,6 +163,9 @@ var amountSpaceRegex = regexp.MustCompile(`[\s\x{00A0}]+|&#xA0;|&nbsp;`)
 //go:embed index.html
 var indexHTML []byte
 
+//go:embed widget.html
+var widgetHTML []byte
+
 // parseKentaaIDs extracts the site ID and API path from a Kentaa page. A
 // fundraiser page also names its team and project, so the most specific wins.
 func parseKentaaIDs(page []byte) (siteID, path string, ok bool) {
@@ -363,6 +366,12 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(indexHTML)
 }
 
+// widgetHandler serves the stream overlay widget, e.g. /widget?url=<fundraiser page>.
+func widgetHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(widgetHTML)
+}
+
 func main() {
 	// Read port from command line with a default value.
 	port := flag.String("port", "8080", "Port to run the proxy server on")
@@ -370,8 +379,9 @@ func main() {
 
 	http.HandleFunc("/kentaa", kentaaHandler)
 	http.HandleFunc("/fundraiser", fundraiserHandler)
+	http.HandleFunc("/widget", widgetHandler)
 	http.HandleFunc("/", indexHandler)
 	log.Printf("Proxy server is running on port %s...\n", *port)
-	log.Printf("Endpoints: /kentaa, /fundraiser?url=<fundraiser page>, /\n")
+	log.Printf("Endpoints: /kentaa, /fundraiser?url=<fundraiser page>, /widget?url=<fundraiser page>, /\n")
 	log.Fatal(http.ListenAndServe(":"+*port, nil))
 }
